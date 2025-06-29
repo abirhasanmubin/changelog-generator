@@ -1,0 +1,156 @@
+#!/bin/bash
+
+# =============================================================================
+# changelog-generator (Main Entry Point)
+# =============================================================================
+
+# Source all the helper and generator scripts
+# shellcheck source=/dev/null
+source ./helpers/changelog-generate-filename
+# shellcheck source=/dev/null
+source ./helpers/changelog-input-helpers
+# shellcheck source=/dev/null
+source ./helpers/changelog-generate-file
+
+# --- Data Collection Functions ---
+
+TYPES_OF_CHANGE=(
+    "Bug fix"
+    "New feature"
+    "Code refactor"
+    "Breaking change"
+    "Documentation update"
+    "Others"
+)
+
+get_changelog_filename() {
+    filename=$(changelog_generate_filename)
+    echo "$filename"
+}
+
+get_changelog_types_of_change() {
+    selected_changes=$(get_multi_select_options_input "${TYPES_OF_CHANGE[@]}")
+    echo "$selected_changes"
+}
+
+get_changelog_title() {
+    local changelog_title
+    changelog_title=$(get_single_line_input "Changelog title")
+    echo "$changelog_title"
+}
+
+get_changelog_motivation() {
+    if [[ "$(get_boolean_type_input "Do you want to include motivation?")" == "true" ]]; then
+        local changelog_motivation
+        changelog_motivation=$(get_multiline_input "Why are you making this change?")
+        echo "$changelog_motivation"
+    fi
+}
+
+get_changelog_description() {
+    local changelog_description
+    changelog_description=$(get_multiline_input "Describe your change")
+    echo "$changelog_description"
+}
+
+get_changelog_todos() {
+    if [[ "$(get_boolean_type_input "Do you want to add any instructions before merge?")" == "true" ]]; then
+        local changelog_todos
+        changelog_todos=$(get_multiline_instructions_as_array "What are the instructions?")
+        echo "$changelog_todos"
+    fi
+}
+
+get_changelog_model_change() {
+    if [[ "$(get_boolean_type_input "Did you make any changes to existing models?")" == "true" ]]; then
+        local changelog_model_changes
+        changelog_model_changes=$(get_multiline_instructions_as_array "What are the changes?")
+        echo "$changelog_model_changes"
+    fi
+}
+
+get_changelog_testing() {
+    if [[ "$(get_boolean_type_input "Did your change needs testing?")" == "true" ]]; then
+        local changelog_testing
+        changelog_testing=$(get_multiline_instructions_as_array "What are the steps for testing?")
+        echo "$changelog_testing"
+    fi
+}
+
+get_changelog_checklist() {
+    local -a flags=()
+
+    echo "Please complete the final checklist:" >&2
+
+    flags+=("$(get_boolean_type_input "I have performed a self-review of my code" "yes")")
+    flags+=("$(get_boolean_type_input "I have added tests that prove my fix is effective or my feature works")")
+    flags+=("$(get_boolean_type_input "I have added necessary documentation (if appropriate)")")
+    flags+=("$(get_boolean_type_input "I have proactively reached out to an engineer to review this PR")")
+    flags+=("$(get_boolean_type_input "I have updated the README file (if appropriate)")")
+
+    echo "${flags[*]}"
+}
+
+# --- Main function ---
+main() {
+    echo "--- Interactive Changelog Generator ---" >&2
+    echo "Please answer the following questions to generate the changelog." >&2
+    echo >&2
+
+    # Ensure the target directory exists
+    mkdir -p .changelog
+
+    # Step 1: Gather all data
+    local raw_filename
+    raw_filename=$(get_changelog_filename)
+
+    local final_filepath=".changelog/$raw_filename"
+    echo >&2
+
+    local types_of_changes
+    types_of_changes=$(get_changelog_types_of_change)
+    echo >&2
+
+    local title
+    title=$(get_changelog_title)
+    echo >&2
+
+    local motivation
+    motivation=$(get_changelog_motivation)
+    echo >&2
+
+    local description
+    description=$(get_changelog_description)
+    echo >&2
+
+    local todos
+    todos=$(get_changelog_todos)
+    echo >&2
+
+    local model_changes
+    model_changes=$(get_changelog_model_change)
+    echo >&2
+
+    local testing
+    testing=$(get_changelog_testing)
+    echo >&2
+
+    local checklist_flags_string
+    checklist_flags_string=$(get_changelog_checklist)
+    echo >&2
+
+    # Step 2: Call the dedicated generator function with all the collected data
+    generate_markdown_file \
+        "$final_filepath" \
+        "$title" \
+        "$motivation" \
+        "$description" \
+        "$types_of_changes" \
+        "$todos" \
+        "$model_changes" \
+        "$testing" \
+        "$checklist_flags_string"
+}
+
+# Run the main function
+main

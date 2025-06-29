@@ -1,0 +1,307 @@
+#!/bin/bash
+
+# -----------------------------------------------------------------------------
+# input_helpers.sh
+#
+# A collection of interactive Bash utility functions for collecting various
+# types of user input: boolean, single-line, multi-line, and multi-select.
+#
+# Functions:
+#   - get_boolean_type_input
+#   - get_single_line_input
+#   - get_multiline_input
+#   - get_multiline_instructions_as_array
+#   - get_multi_select_options_input
+#
+# -----------------------------------------------------------------------------
+# TODOs — Upcoming Improvements & Enhancements
+#
+# ✨ User Experience Improvements
+# - [ ] Add terminal text **coloring** to improve visibility of prompts, errors, and status messages.
+# - [ ] Show **default values** in input prompts with **underlined and colored** styling.
+#
+# 🎯 Interactive Multi-Select UI
+# - [ ] Replace basic input-based option selection with **interactive navigation**:
+#       - Arrow keys → navigate up/down through options
+#       - Spacebar   → toggle option selection
+#       - "a" key    → toggle all options on/off
+#       - Enter      → submit selections
+# - [ ] Dynamically highlight selected options and indicate the active cursor row.
+# - [ ] Visually distinguish the “Others” option for better context.
+#
+# 💡 Miscellaneous Enhancements
+# - [ ] Modularize coloring/styling logic for reuse across prompts.
+# - [ ] Add support for customizable labels (e.g., "Yes"/"No", "True"/"False").
+# - [ ] Provide fallback input mechanisms when running in non-interactive environments.
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# get_boolean_type_input <question> [defaultOption] [truthyOption] [falsyOption]
+#
+# Prompts the user with a yes/no question and returns a boolean response.
+#
+# Arguments:
+#   $1 - The question to ask (required)
+#   $2 - The default answer (optional, default: "no")
+#   $3 - The string representing the "true" option (optional, default: "yes")
+#   $4 - The string representing the "false" option (optional, default: "no")
+#
+# Note:
+#   The default option will be displayed capitalized in the prompt.
+#
+# Returns:
+#   "true" or "false" (printed to stdout)
+# -----------------------------------------------------------------------------
+
+get_boolean_type_input() {
+    if [ -z "$1" ]; then
+        echo "Error: Question is required." >&2
+        return 1
+    fi
+
+    local question=$1
+    local defaultOption=${2:-"no"}
+    local truthyOption=${3:-"yes"}
+    local falsyOption=${4:-"no"}
+
+    # Capitalize default option for display
+    local defaultCapitalized
+    defaultCapitalized="$(tr '[:lower:]' '[:upper:]' <<<"${defaultOption:0:1}")${defaultOption:1}"
+
+    # Prepare display options string with default capitalized
+    local displayOptions
+    if [[ "$defaultOption" == "$truthyOption" ]]; then
+        displayOptions="($defaultCapitalized/$falsyOption)"
+    else
+        displayOptions="($truthyOption/$defaultCapitalized)"
+    fi
+
+    read -r -p "$question: $displayOptions " input
+    local sanitized_input
+    sanitized_input=$(echo "$input" | tr '[:upper:]' '[:lower:]' | xargs)
+
+    if [[ -z "$sanitized_input" ]]; then
+        sanitized_input=$(echo "$defaultOption" | tr '[:upper:]' '[:lower:]')
+    fi
+
+    case $sanitized_input in
+    "yes" | "y" | "true" | "1") echo true ;;
+    "no" | "n" | "false" | "0") echo false ;;
+    *) echo false ;; # Fallback
+    esac
+}
+
+# -----------------------------------------------------------------------------
+# get_single_line_input <question>
+#
+# Prompts the user for a non-empty single line of input.
+# Arguments:
+#   $1 - The question to ask (required)
+# Returns:
+#   Trimmed user input
+# -----------------------------------------------------------------------------
+get_single_line_input() {
+    if [ -z "$1" ]; then
+        echo "Error: Question argument is required." >&2
+        return 1
+    fi
+
+    local question=$1
+    local input
+
+    while [ -z "$input" ]; do
+        read -r -p "$question: " input
+        if [ -z "$input" ]; then
+            echo "Input cannot be empty. Please try again." >&2
+        fi
+    done
+
+    echo "$input" | xargs
+}
+
+# -----------------------------------------------------------------------------
+# get_multiline_input <question> [delimiter]
+#
+# Prompts the user for multi-line input. Ends when the user enters a specific
+# delimiter or presses Ctrl+D.
+# Arguments:
+#   $1 - The question to display (required)
+#   $2 - Delimiter word to end input (optional, default: "EOF")
+# Returns:
+#   All lines as a single string (joined with newlines)
+# -----------------------------------------------------------------------------
+get_multiline_input() {
+    if [ -z "$1" ]; then
+        echo "Error: Question is required." >&2
+        return 1
+    fi
+
+    local question=$1
+    local delimiter=${2:-"EOF"}
+    local -a lines=()
+    local line
+
+    echo "$question" >&2
+    echo "Enter your text. Type '${delimiter}' on a new line or press Ctrl+D to finish." >&2
+
+    while IFS= read -r -e line || [[ -n "$line" ]]; do
+        if [[ "$line" == "$delimiter" ]]; then
+            break
+        fi
+        lines+=("$line")
+    done
+
+    if [ "${#lines[@]}" -gt 0 ]; then
+        (
+            IFS=$'\n'
+            printf "%s" "${lines[*]}"
+        )
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# get_multiline_instructions_as_array <question>
+#
+# Prompts the user for multi-line input and returns it as an array (line by line).
+# Ends when the user presses Enter twice or Ctrl+D.
+# Arguments:
+#   $1 - The question to ask (required)
+# Returns:
+#   List of lines printed line by line (suitable for capturing into an array)
+# -----------------------------------------------------------------------------
+get_multiline_instructions_as_array() {
+    if [ -z "$1" ]; then
+        echo "Error: Question is required." >&2
+        return 1
+    fi
+
+    local question=$1
+    local -a all_input=()
+    local line
+    local prev_line_was_empty=false
+    local terminated_by_double_enter=false
+
+    echo "$question" >&2
+    echo "Enter your instructions. Press Enter twice or use Ctrl+D to finish." >&2
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ -z "$line" && "$prev_line_was_empty" == true ]]; then
+            terminated_by_double_enter=true
+            break
+        fi
+        all_input+=("$line")
+        if [[ -z "$line" ]]; then
+            prev_line_was_empty=true
+        else
+            prev_line_was_empty=false
+        fi
+    done
+
+    # Trim trailing empty line if entered
+    if [ "${#all_input[@]}" -gt 0 ]; then
+        local last_index=$((${#all_input[@]} - 1))
+        if [[ -z "${all_input[last_index]}" ]]; then
+            unset 'all_input[last_index]'
+        fi
+    fi
+
+    if [ "${#all_input[@]}" -gt 0 ]; then
+        printf "%s\n" "${all_input[@]}"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# get_multi_select_options_input <options...>
+#
+# Prompts the user with a numbered list of options and allows multi-selection.
+# Special input:
+#   - 0 = Select all options
+#   - Last option is treated as "Others", and an additional prompt will appear.
+#
+# Arguments:
+#   $@ - List of options to display (at least one required)
+# Returns:
+#   Final options list, with unselected options prefixed with '#'
+#   If "Others" is selected, appends the custom user entry to it
+# -----------------------------------------------------------------------------
+get_multi_select_options_input() {
+    if [ "$#" -eq 0 ]; then
+        echo "Error: At least one option is required." >&2
+        return 1
+    fi
+
+    local -a options=("$@")
+    local -a results
+    local -a selections_raw
+
+    local contains_others=false
+    local all_selected=false
+    local other_description
+    local size_of_options=${#options[@]}
+
+    echo "Select the type of changes (you can enter multiple numbers separated by space, or 0 for all):" >&2
+
+    for i in "${!options[@]}"; do
+        results[i]=false
+        printf "  %d) %s\n" "$((i + 1))" "${options[i]}" >&2
+    done
+
+    while [ ${#selections_raw[@]} -eq 0 ]; do
+        read -r -e -p "Enter selection(s) (e.g., 1 3 6): " -a selections_raw
+        [ ${#selections_raw[@]} -eq 0 ] && echo "No selection made." >&2
+    done
+
+    for num in "${selections_raw[@]}"; do
+        if ! [[ "$num" =~ ^[0-9]+$ ]]; then
+            echo "Warning: '$num' is not a valid number. Skipping." >&2
+            continue
+        fi
+
+        if ((num < 0 || num > size_of_options)); then
+            echo "Warning: '$num' is out of range (0 or 1-$size_of_options). Skipping." >&2
+            continue
+        fi
+
+        if ((num == 0)); then
+            echo "All options selected." >&2
+            all_selected=true
+            contains_others=true
+            break
+        fi
+
+        local index=$((num - 1))
+        if ((num == size_of_options)); then
+            contains_others=true
+        fi
+
+        results[index]=true
+    done
+
+    if [ "$all_selected" = false ]; then
+        for i in "${!options[@]}"; do
+            if [ "${results[i]}" != "true" ]; then
+                options[i]=$'#'${options[i]}
+            fi
+        done
+    fi
+
+    if [ "$contains_others" = true ]; then
+        if command -v get_single_line_input >/dev/null 2>&1; then
+            other_description=$(get_single_line_input "Please specify the 'Other' change")
+        else
+            read -r -p "Please specify the 'Other' change: " other_description
+        fi
+        options[size_of_options - 1]+=$": $other_description"
+    fi
+
+    printf "%s\n" "${options[@]}"
+}
+
+# -----------------------------------------------------------------------------
+# Export all functions for use in subshells or external scripts
+# -----------------------------------------------------------------------------
+export -f get_boolean_type_input
+export -f get_single_line_input
+export -f get_multiline_input
+export -f get_multiline_instructions_as_array
+export -f get_multi_select_options_input

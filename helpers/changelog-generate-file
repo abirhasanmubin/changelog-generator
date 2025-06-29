@@ -1,0 +1,214 @@
+#!/bin/bash
+
+# ==============================================================================
+#
+# FILE: changelog-generate-file
+#
+# PURPOSE:
+#   This script acts as a library and is not intended to be executed directly.
+#   It contains a single function, `generate_markdown_file`, which is
+#   responsible for taking structured changelog data and writing it to a
+#   beautifully formatted Markdown file.
+#
+# USAGE:
+#   This script must be sourced by the main entry-point script
+#   (e.g., `source ./changelog-generate-file`). The exported function
+#   `generate_markdown_file` can then be called.
+#
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+#
+# FUNCTION: generate_markdown_file()
+#
+# DESCRIPTION:
+#   Receives all collected changelog data as command-line arguments, formats
+#   this data into distinct Markdown sections, and writes the result to a
+#   specified file. The function intelligently skips creating sections for
+#   optional inputs if they are empty.
+#
+# ARGUMENTS:
+#   $1 (filename)       - String: The full path, including the directory and
+#                         filename (e.g., ".changelog/1719824356-user-main.md"),
+#                         where the output file will be created.
+#
+#   $2 (title)          - String: The main title for the changelog entry. This
+#                         is a required field.
+#
+#   $3 (motivation_raw) - String: A raw, potentially multi-line string for the
+#                         "Motivation" section. Can be empty.
+#
+#   $4 (description_raw)- String: A raw, potentially multi-line string for the
+#                         "Description" section. Can be empty.
+#
+#   $5 (types_of_changes)- String: A multi-line string where each line is a change
+#                         type. Unselected options are prefixed with a '#' symbol.
+#
+#   $6 (todos)          - String: A multi-line string containing "to-do before merge"
+#                         items. Can be empty.
+#
+#   $7 (model_changes)  - String: A multi-line string describing changes to data
+#                         models. Can be empty.
+#
+#   $8 (testing)        - String: A multi-line string detailing testing
+#                         instructions. Can be empty.
+#
+#   $9 (checklist_flags)- String: A single, space-separated string of boolean
+#                         ('true' or 'false') values corresponding to the checklist.
+#
+# SIDE EFFECTS:
+#   - Creates a new file at the path specified by the first argument.
+#   - Prints a success message to standard output upon completion.
+#
+# ------------------------------------------------------------------------------
+generate_markdown_file() {
+    # --- 1. Assign arguments to named variables for clarity ---
+    local filename="$1"
+    local title="$2"
+    local motivation_raw="$3"
+    local description_raw="$4"
+    local types_of_changes="$5"
+    local todos="$6"
+    local model_changes="$7"
+    local testing="$8"
+
+    # Reconstruct the checklist flags array from the space-separated string passed as the 9th argument.
+    local -a checklist_flags=($9)
+
+    # --- 2. Define static content and format dynamic content ---
+
+    # A static array holding the text for each checklist item.
+    local -a CHECKLIST_ITEMS=(
+        "I have performed a self-review of my code"
+        "I have added tests that prove my fix is effective or my feature works"
+        "I have added necessary documentation (if appropriate)"
+        "I have proactively reached out to an engineer to review this PR"
+        "I have updated the README file (if appropriate)"
+    )
+
+    # To preserve user-entered line breaks in the final Markdown file, we append
+    # two spaces to the end of each line. This is a standard Markdown technique for hard line breaks.
+    # We use `sed` for this operation because it correctly handles multi-line strings and is more
+    # readable than pure-bash alternatives. The SC2001 shellcheck warning is disabled for this reason.
+    # shellcheck disable=SC2001
+    local motivation
+    # shellcheck disable=SC2001
+    motivation=$(echo "$motivation_raw" | sed 's/$/  /')
+    local description
+    # shellcheck disable=SC2001
+    description=$(echo "$description_raw" | sed 's/$/  /')
+
+    # --- 3. Write all content to the destination file ---
+
+    # Use a file descriptor (e.g., `>&3`) for writing. This is a clean and
+    # efficient way to redirect the output of multiple commands to a single file.
+    exec 3>"$filename"
+
+    # Section: Title (Required)
+    # This is a mandatory field and will always be present in the output.
+    echo "## Title" >&3
+    echo >&3
+    echo "$title" >&3
+    echo >&3
+
+    # Section: Motivation (Optional)
+    # This entire section is skipped if the user provided no input for it.
+    if [[ -n "$motivation_raw" ]]; then
+        echo "## Motivation" >&3
+        echo >&3
+        echo "$motivation" >&3
+        echo >&3
+    fi
+
+    # Section: Description (Optional)
+    # This entire section is skipped if the user provided no input for it.
+    if [[ -n "$description_raw" ]]; then
+        echo "## Description" >&3
+        echo >&3
+        echo "$description" >&3
+        echo >&3
+    fi
+
+    # Section: Type of change (Required)
+    # Renders a Markdown checklist. It checks each line for the '#' prefix
+    # to determine whether the checkbox should be checked or unchecked.
+    echo "## Type of change (Check all that apply)" >&3
+    echo >&3
+    while IFS= read -r line; do
+        if [[ -z "$line" ]]; then continue; fi # Skip empty lines
+        if [[ "$line" == \#* ]]; then
+            # If the line starts with '#', it was unselected. Remove the '#' and render an unchecked box.
+            echo "- [ ] ${line#\#}" >&3
+        else
+            # Otherwise, it was selected. Render a checked box.
+            echo "- [x] $line" >&3
+        fi
+    done <<<"$types_of_changes"
+    echo >&3
+
+    # Section: To-do before merge (Optional)
+    # Renders each line of the input as an unchecked to-do list item.
+    if [[ -n "$todos" ]]; then
+        echo "## To-do before merge" >&3
+        echo >&3
+        while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+                echo "- [ ] $line" >&3
+            fi
+        done <<<"$todos"
+        echo >&3
+    fi
+
+    # Section: Changes to existing models (Optional)
+    # Renders each line of the input as a standard bullet point.
+    if [[ -n "$model_changes" ]]; then
+        echo "## Changes to existing models:" >&3
+        echo >&3
+        while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+                echo "- $line" >&3
+            fi
+        done <<<"$model_changes"
+        echo >&3
+    fi
+
+    # Section: Testing Instructions (Optional)
+    # Renders each line of the input as an item in a numbered list.
+    if [[ -n "$testing" ]]; then
+        echo "## Testing Instructions" >&3
+        echo >&3
+        local counter=1
+        while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+                echo "$counter. $line" >&3
+                ((counter++))
+            fi
+        done <<<"$testing"
+        echo >&3
+    fi
+
+    # Section: Checklist (Required)
+    # Iterates through the predefined checklist items and checks the corresponding
+    # boolean flag from the `checklist_flags` array to render the correct state.
+    echo "## Checklist" >&3
+    echo >&3
+    for i in "${!CHECKLIST_ITEMS[@]}"; do
+        if [[ "${checklist_flags[i]}" == "true" ]]; then
+            echo "- [x] ${CHECKLIST_ITEMS[i]}" >&3
+        else
+            echo "- [ ] ${CHECKLIST_ITEMS[i]}" >&3
+        fi
+    done
+
+    # --- 4. Finalize ---
+
+    # Close the file descriptor.
+    exec 3>&-
+
+    # Print a success message to the user's terminal.
+    echo
+    echo "✅ Success! Changelog generated at: $filename"
+}
+
+# Export the function, making it available to any script that sources this file.
+export -f generate_markdown_file

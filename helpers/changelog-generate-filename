@@ -1,0 +1,86 @@
+#!/bin/bash
+
+# -----------------------------------------------------------------------------
+# changelog_filename_generator.sh
+#
+# This script provides utility functions to generate a changelog filename
+# based on the current epoch time, GitHub username (or system username),
+# and current Git branch.
+#
+# Example filename output:
+#   1719824356-johndoe-feature/login-fix.md
+#
+# The main exported function is:
+#   changelog_generate_filename
+#
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Returns the current date/time as the number of seconds since the Unix epoch.
+# -----------------------------------------------------------------------------
+get_current_date_time_in_epoch_seconds() {
+    date +%s
+}
+
+# -----------------------------------------------------------------------------
+# Returns the current system username.
+# Tries `id -un`; if that fails, falls back to `whoami`.
+# -----------------------------------------------------------------------------
+get_system_username() {
+    id -un 2>/dev/null || whoami
+}
+
+# -----------------------------------------------------------------------------
+# Extracts the username part from the GitHub email in the local git config.
+# Example: if git email is "jane.doe@example.com", returns "jane.doe".
+# -----------------------------------------------------------------------------
+get_name_from_github_email() {
+    local name
+    name=$(git config user.email)
+    name=${name%%@*} # Remove domain part after '@'
+    echo "$name"
+}
+
+# -----------------------------------------------------------------------------
+# Determines the user's name by:
+# 1. Trying to extract from git email (preferred)
+# 2. Falling back to system username if git config is unavailable
+# -----------------------------------------------------------------------------
+get_user_name() {
+    get_name_from_github_email || get_system_username
+}
+
+# -----------------------------------------------------------------------------
+# Returns the current Git branch name.
+# If not inside a git repository, returns "master" and logs an error.
+# -----------------------------------------------------------------------------
+get_current_git_branch_name() {
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+        git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master"
+    else
+        echo "FilenameGenerationException: no git repository found for current directory" >&2
+        echo "master"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Generates a changelog filename in the format:
+#   <epoch>-<username>-<branch>.md
+#
+# Example:
+#   1719824356-johndoe-feature-login.md
+#
+# Output is printed to stdout.
+# -----------------------------------------------------------------------------
+changelog_generate_filename() {
+    local currentEpochTime currentUsername currentBranchName
+
+    currentEpochTime="$(get_current_date_time_in_epoch_seconds)"
+    currentUsername="$(get_user_name)"
+    currentBranchName="$(get_current_git_branch_name)"
+
+    echo "${currentEpochTime}-${currentUsername}-${currentBranchName}.md"
+}
+
+# Export the main function so it can be used in subshells or from other scripts
+export -f changelog_generate_filename
