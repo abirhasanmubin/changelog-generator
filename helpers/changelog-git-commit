@@ -1,0 +1,218 @@
+#!/bin/bash
+
+# ==============================================================================
+#
+# FILE: changelog-git-commit
+#
+# PURPOSE:
+#   This script acts as a library and is not intended to be executed directly.
+#   It contains functions for retrieving and displaying Git commit information
+#   with clickable web links for various Git hosting platforms (GitHub, GitLab,
+#   Bitbucket, etc.).
+#
+# USAGE:
+#   This script must be sourced by the main entry-point script
+#   (e.g., `source ./helpers/changelog-git-commit`). The exported function
+#   `get_git_commit_links` can then be called.
+#
+# ==============================================================================
+
+# -----------------------------------------------------------------------------
+# HELPER FUNCTIONS
+# (Prefixed with an underscore to indicate they are internal to this script)
+# -----------------------------------------------------------------------------
+
+# --- Data Retrieval Functions ---
+
+# Outputs the remote 'origin' URL. Returns 1 on failure.
+get_git_remote_url() {
+  local remote_url
+  remote_url=$(git config --get remote.origin.url)
+  if [ -z "$remote_url" ]; then
+    echo "Error: Not a Git repository or no remote named 'origin' found." >&2
+    return 1
+  fi
+  echo "$remote_url"
+}
+
+# Outputs the current branch name. Returns 1 if in a detached HEAD state.
+get_current_branch() {
+  local current_branch
+  current_branch=$(git rev-parse --abbrev-ref HEAD)
+  if [ "$current_branch" = "HEAD" ]; then
+    echo "Error: You are in a detached HEAD state. Please check out a branch." >&2
+    return 1
+  fi
+  echo "$current_branch"
+}
+
+# Outputs commits that exist locally but not on the upstream remote.
+get_local_commits() {
+  git log @{u}..HEAD --pretty=format:'%h %s'
+}
+
+# Fetches from origin and outputs the N most recent commits from the remote branch.
+get_remote_commits() {
+  local branch_name=$1
+  local commit_limit=${2:-10} # Default to 10 commits if not specified
+
+  echo "Fetching latest updates for '$branch_name'..." >&2
+  # Hide fetch output unless it fails
+  if ! git fetch origin "$branch_name" --quiet; then
+    echo "Warning: 'git fetch' failed. Showing local history instead." >&2
+  fi
+  git log "origin/$branch_name" --pretty=format:'%h %s' -n "$commit_limit"
+}
+
+# --- URL and String Manipulation Functions ---
+
+# Converts a git remote URL (SSH or HTTPS) to a base web URL using a case statement.
+get_web_base_url() {
+  local remote_url=$1
+  local base_url=""
+
+  case "$remote_url" in
+    # Case 1: SSH URLs (e.g., git@github.com:user/repo.git)
+    git@*)
+      if [[ $remote_url =~ ^git@([^:]+):([^/]+)/([^/]+)\.git$ ]]; then
+        local host="${BASH_REMATCH[1]}"
+        local user="${BASH_REMATCH[2]}"
+        local repo="${BASH_REMATCH[3]}"
+        base_url="https://$host/$user/$repo"
+      else
+        base_url="$remote_url"  # fallback, or leave as empty string
+      fi
+      ;;
+
+    # Case 2: HTTPS URLs (e.g., https://github.com/user/repo.git)
+    http*)
+      base_url="${remote_url%.git}"
+      ;;
+
+    # Fallback for other types (e.g., local paths or unknown protocols)
+    *)
+      base_url="${remote_url%.git}"
+      ;;
+  esac
+
+  echo "$base_url"
+}
+
+
+# Determines the correct commit path for a given web URL using a case statement.
+get_commit_path() {
+  local base_url=$1
+
+  case "$base_url" in
+    # Case 1: URL contains "gitlab.com"
+    *gitlab.com*)
+      echo "/-/commit/"
+      ;;
+
+    # Case 2: URL contains "bitbucket.org"
+    *bitbucket.org*)
+      echo "/commits/"
+      ;;
+
+    # Default for GitHub, Azure DevOps, etc.
+    *)
+      echo "/commit/"
+      ;;
+  esac
+}
+
+# --- Presentation Function ---
+
+# Prints a formatted list of commits with their corresponding web links.
+print_commits_with_links() {
+  local commits_to_show=$1
+  local base_url=$2
+  local commit_path=$3
+
+  if [ -z "$commits_to_show" ]; then
+      echo "No commits to display."
+      return
+  fi
+
+  # Use a while-read loop to process each line of the commit list
+  echo "$commits_to_show" | while read -r commit_hash commit_subject; do
+    # Ensure hash and subject are not empty
+    if [ -n "$commit_hash" ] && [ -n "$commit_subject" ]; then
+      local commit_url="$base_url$commit_path$commit_hash"
+      # Print as markdown link with hash as clickable text
+      printf -- "- [%s](%s) %s\n" "$commit_hash" "$commit_url" "$commit_subject"
+    fi
+  done
+}
+
+
+# -----------------------------------------------------------------------------
+# MAIN FUNCTION (The Orchestrator)
+# -----------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+#
+# FUNCTION: get_git_commit_links()
+#
+# DESCRIPTION:
+#   Retrieves and displays Git commits with clickable web links. The function
+#   intelligently determines whether to show local-only commits (if they exist)
+#   or recent remote commits. It supports multiple Git hosting platforms
+#   including GitHub, GitLab, and Bitbucket.
+#
+# ARGUMENTS:
+#   None - All required information is gathered from the current Git repository
+#
+# BEHAVIOR:
+#   - If local commits exist that haven't been pushed upstream, displays those
+#   - If no local commits exist, fetches and displays recent remote commits
+#   - Automatically detects the Git hosting platform and formats URLs accordingly
+#   - Handles repositories without upstream branches gracefully
+#
+# OUTPUT:
+#   Prints formatted commit information to stdout in the format:
+#   <commit_hash> <commit_subject> <clickable_web_url>
+#
+# RETURNS:
+#   0 on success, 1 on error (e.g., not a Git repository, no remote origin)
+#
+# SIDE EFFECTS:
+#   - Executes `git fetch` to retrieve latest remote information
+#   - Prints informational messages to stderr
+#
+# ------------------------------------------------------------------------------
+get_git_commit_links() {
+  # 1. Get initial state, exiting on error
+  local remote_url
+  remote_url=$(get_git_remote_url) || return 1
+
+  local current_branch
+  current_branch=$(get_current_branch) || return 1
+
+  # 2. Decide which commits to show (local or remote)
+  local commits_to_show
+  if ! git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
+    # No upstream branch configured, default to showing remote commits
+    commits_to_show=$(get_remote_commits "$current_branch")
+  else
+    # Upstream exists, check for local-only commits
+    local_commits=$(get_local_commits)
+    if [ -z "$local_commits" ]; then
+      commits_to_show=$(get_remote_commits "$current_branch")
+    else
+      commits_to_show="$local_commits"
+    fi
+  fi
+
+  # 3. Get URL components
+  local base_url
+  base_url=$(get_web_base_url "$remote_url")
+  local commit_path
+  commit_path=$(get_commit_path "$base_url")
+
+  # 4. Print the final output
+  print_commits_with_links "$commits_to_show" "$base_url" "$commit_path"
+}
+
+# Export the function, making it available to any script that sources this file.
+export -f get_git_commit_links
