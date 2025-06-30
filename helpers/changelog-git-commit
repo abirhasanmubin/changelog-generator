@@ -182,37 +182,34 @@ print_commits_with_links() {
 #
 # ------------------------------------------------------------------------------
 get_git_commit_links() {
-  # 1. Get initial state, exiting on error
-  local remote_url
-  remote_url=$(get_git_remote_url) || return 1
-
+  # 1. Get current branch, show local commits if no remote
   local current_branch
   current_branch=$(get_current_branch) || return 1
 
-  # 2. Decide which commits to show (local or remote)
-  local commits_to_show
-  if ! git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then
-    # No upstream branch configured, default to showing remote commits
-    commits_to_show=$(get_remote_commits "$current_branch")
+  # 2. Try to get remote URL, but continue if it fails
+  local remote_url base_url commit_path
+  remote_url=$(get_git_remote_url)
+  if [ $? -eq 0 ]; then
+    base_url=$(get_web_base_url "$remote_url")
+    commit_path=$(get_commit_path "$base_url")
   else
-    # Upstream exists, check for local-only commits
-    local_commits=$(get_local_commits)
-    if [ -z "$local_commits" ]; then
-      commits_to_show=$(get_remote_commits "$current_branch")
-    else
-      commits_to_show="$local_commits"
-    fi
+    # No remote origin, show local commits without links
+    echo "Recent commits (no remote origin found):"
+    git log --pretty=format:'- %h %s' -n 10 2>/dev/null || echo "No commits found"
+    return 0
   fi
 
-  # 3. Get URL components
-  local base_url
-  base_url=$(get_web_base_url "$remote_url")
-  local commit_path
-  commit_path=$(get_commit_path "$base_url")
+  # 3. Get commits from current branch only
+  local branch_commits
+  branch_commits=$(git log "$current_branch" --pretty=format:'%h %s' -n 10 2>/dev/null)
 
-  # 4. Print the final output
-  print_commits_with_links "$commits_to_show" "$base_url" "$commit_path"
+  # 4. Display commits from current branch
+  if [ -n "$branch_commits" ]; then
+    echo "Commits from branch '$current_branch':"
+    print_commits_with_links "$branch_commits" "$base_url" "$commit_path"
+  else
+    echo "No commits found"
+  fi
 }
-
 # Export the function, making it available to any script that sources this file.
 export -f get_git_commit_links

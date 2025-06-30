@@ -10,6 +10,7 @@ This script guides you through a series of prompts to gather all the necessary i
 
 - **Interactive CLI**: Guides the user through a series of questions, from title to a final checklist.
 - **Automatic File Naming**: Generates a unique filename based on the current timestamp, username, and Git branch (e.g., `.changelog/1719824356-johndoe-feature-login.md`).
+- **Git Commit Links**: Automatically adds clickable commit links to the changelog, supporting GitHub, GitLab, and Bitbucket.
 - **Structured Markdown Output**: Creates a well-formatted Markdown file with distinct, skippable sections.
 - **Smart Section Handling**: Automatically skips sections in the final file if no input is provided for them.
 - **Multi-Select Options**: Allows for selecting multiple "types of change" (e.g., Bug fix, New feature).
@@ -29,6 +30,7 @@ This script guides you through a series of prompts to gather all the necessary i
 ├── helpers
 │   ├── changelog-generate-file
 │   ├── changelog-generate-filename
+│   ├── changelog-git-commit
 │   └── changelog-input-helpers
 └── readme.md
 ```
@@ -47,7 +49,8 @@ chmod +x changelog-generator
 # Source all the helper and generator scripts
 source ./helpers/changelog-generate-filename
 source ./helpers/changelog-input-helpers
-source ./changelog-generate-file
+source ./helpers/changelog-generate-file
+source ./helpers/changelog-git-commit
 ```
 
 ---
@@ -97,6 +100,11 @@ It replaces the legacy username/password table entirely.
 - [x] I have added necessary documentation (if appropriate)
 - [x] I have proactively reached out to an engineer to review this PR
 - [ ] I have updated the README file (if appropriate)
+
+## Git Commit Links
+
+- [a1b2c3d](https://github.com/user/repo/commit/a1b2c3d) Add user authentication
+- [e4f5g6h](https://github.com/user/repo/commit/e4f5g6h) Update login validation
 ```
 
 ---
@@ -107,7 +115,8 @@ It replaces the legacy username/password table entirely.
 - `helpers/`: A directory containing modular helper scripts.
   - `helpers/changelog-input-helpers`: A library of functions for handling different types of interactive user input (yes/no, single-line, multi-line, multi-select).
   - `helpers/changelog-generate-filename`: A library of functions for creating the unique, descriptive filename for the changelog entry.
-  - `changelog-generate-file`: A library script responsible for taking the final, collected data and writing it to the Markdown file using a predefined template.
+  - `helpers/changelog-generate-file`: A library script responsible for taking the final, collected data and writing it to the Markdown file using a predefined template.
+  - `helpers/changelog-git-commit`: A library for retrieving and formatting Git commit information with clickable web links.
 - `.changelog/`: The default output directory where all generated changelog files are stored. This directory is created automatically if it doesn't exist.
 
 ---

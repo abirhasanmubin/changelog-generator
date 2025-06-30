@@ -93,6 +93,11 @@ get_changelog_checklist() {
     echo "${flags[*]}"
 }
 
+get_changelog_commits() {
+    echo "Collecting git commit information..." >&2
+    get_git_commit_links 2>/dev/null || echo "No commits found"
+}
+
 # --- Main function ---
 main() {
     echo "--- Interactive Changelog Generator ---" >&2
@@ -140,6 +145,10 @@ main() {
 
     local checklist_flags_string
     checklist_flags_string=$(get_changelog_checklist)
+    echo >&2
+
+    local commits
+    commits=$(get_changelog_commits)
     echo >&2
 
     # Step 2: Call the dedicated generator function with all the collected data

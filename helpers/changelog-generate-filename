@@ -78,6 +78,9 @@ changelog_generate_filename() {
     currentEpochTime="$(get_current_date_time_in_epoch_seconds)"
     currentUsername="$(get_user_name)"
     currentBranchName="$(get_current_git_branch_name)"
+    
+    # Sanitize branch name by replacing slashes with hyphens
+    currentBranchName="${currentBranchName//\//-}"
 
     echo "${currentEpochTime}-${currentUsername}-${currentBranchName}.md"
 }
