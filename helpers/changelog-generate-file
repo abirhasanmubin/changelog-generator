@@ -199,6 +199,13 @@ generate_markdown_file() {
             echo "- [ ] ${CHECKLIST_ITEMS[i]}" >&3
         fi
     done
+    echo >&3
+
+    # Section: Git Commit Links (Auto-generated)
+    # Uses the get_git_commit_links function to add relevant commit information
+    echo "## Git Commit Links" >&3
+    echo >&3
+    get_git_commit_links >&3 2>/dev/null || echo "No git commit information available" >&3
 
     # --- 4. Finalize ---
 

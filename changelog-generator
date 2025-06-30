@@ -11,6 +11,8 @@ source ./helpers/changelog-generate-filename
 source ./helpers/changelog-input-helpers
 # shellcheck source=/dev/null
 source ./helpers/changelog-generate-file
+# shellcheck source=/dev/null
+source ./helpers/changelog-git-commit
 
 # --- Data Collection Functions ---
 
@@ -98,13 +100,14 @@ main() {
     echo >&2
 
     # Ensure the target directory exists
-    mkdir -p .changelog
+    mkdir -p .bitbucket
+    mkdir -p .bitbucket/.changelog
 
     # Step 1: Gather all data
     local raw_filename
     raw_filename=$(get_changelog_filename)
 
-    local final_filepath=".changelog/$raw_filename"
+    local final_filepath=".bitbucket/.changelog/$raw_filename"
     echo >&2
 
     local types_of_changes
